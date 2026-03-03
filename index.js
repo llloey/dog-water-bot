@@ -286,3 +286,7 @@ client.on("messageCreate", async (message) => {
 });
 
 console.log("TOKEN EXISTS:", !!process.env.DISCORD_TOKEN);
+
+client.login(process.env.DISCORD_TOKEN)
+  .then(() => console.log("Discord login success"))
+  .catch(err => console.error("Discord login error:", err));
