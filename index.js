@@ -1,8 +1,7 @@
 const express = require("express");
 const { Client, GatewayIntentBits } = require("discord.js");
-const { google } = require("googleapis");
 
-console.log("🔥 VERSION 2 RUNNING 🔥");
+console.log("🔥 VERSION 3 RUNNING 🔥");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11,7 +10,7 @@ const PORT = process.env.PORT || 3000;
 // Web server
 // =========================
 app.get("/", (req, res) => {
-  res.send("Dog Water Bot V2 🐶💧");
+  res.send("Dog Water Bot V3 🐶💧");
 });
 
 app.listen(PORT, () => {
@@ -19,12 +18,7 @@ app.listen(PORT, () => {
 });
 
 // =========================
-// CONFIG
-// =========================
-const TARGET_DRINK = 1000;
-
-// =========================
-// Discord
+// Discord Client
 // =========================
 const client = new Client({
   intents: [
@@ -38,30 +32,6 @@ client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// =========================
-// Google Sheets
-// =========================
-const auth = new google.auth.GoogleAuth({
-  credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
-  scopes: ["https://www.googleapis.com/auth/spreadsheets"]
-});
-
-async function getSheets() {
-  return google.sheets({ version: "v4", auth: await auth.getClient() });
-}
-
-async function getAllRows() {
-  const sheets = await getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet1!A:E"
-  });
-  return res.data.values || [];
-}
-
-// =========================
-// Message Handler (debug)
-// =========================
 client.on("messageCreate", async (message) => {
   console.log("📨 EVENT FIRED:", message.content);
 
@@ -78,15 +48,19 @@ client.on("messageCreate", async (message) => {
 });
 
 // =========================
-// LOGIN
+// FORCE LOGIN (สำคัญ)
 // =========================
-console.log("TOKEN EXISTS:", !!process.env.DISCORD_TOKEN);
+(async () => {
+  try {
+    console.log("🚀 Starting Discord login...");
+    console.log("TOKEN EXISTS:", !!process.env.DISCORD_TOKEN);
 
-client.login(process.env.DISCORD_TOKEN)
-  .then(() => {
+    await client.login(process.env.DISCORD_TOKEN);
+
     console.log("🎯 Discord login success");
-  })
-  .catch(err => {
+
+  } catch (err) {
     console.error("❌ Discord login error:");
     console.error(err);
-  });
+  }
+})();
