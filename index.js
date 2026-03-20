@@ -76,18 +76,17 @@ async function getAllRows() {
 // =========================
 // Utilities
 // =========================
+function todayISO() {
+  return new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+}
+
 function resolveDate(dateInput) {
-  if (!dateInput) {
-    return new Date().toLocaleDateString("th-TH");
-  }
+  if (!dateInput) return todayISO();
 
   const regex = /^\d{4}-\d{2}-\d{2}$/;
   if (!regex.test(dateInput)) return null;
 
-  const parsed = new Date(dateInput);
-  if (isNaN(parsed)) return null;
-
-  return parsed.toLocaleDateString("th-TH");
+  return dateInput;
 }
 
 function calculateByDate(rows, date) {
@@ -100,13 +99,8 @@ function calculateByDate(rows, date) {
       const type = r[1];
       const value = Number(r[3] || 0);
 
-      if (type === "WATER" || type === "FOOD") {
-        drink += value;
-      }
-
-      if (type === "AR") {
-        ar += value;
-      }
+      if (type === "WATER" || type === "FOOD") drink += value;
+      if (type === "AR") ar += value;
     });
 
   return { drink, ar };
@@ -119,6 +113,8 @@ function getLastNDaysSummary(rows, days) {
   let daySet = new Set();
 
   rows.forEach(r => {
+    if (!r[0]) return;
+
     const rowDate = new Date(r[0]);
     const diff = (now - rowDate) / (1000 * 60 * 60 * 24);
 
@@ -128,13 +124,8 @@ function getLastNDaysSummary(rows, days) {
 
       daySet.add(r[0]);
 
-      if (type === "WATER" || type === "FOOD") {
-        totalDrink += value;
-      }
-
-      if (type === "AR") {
-        totalAR += value;
-      }
+      if (type === "WATER" || type === "FOOD") totalDrink += value;
+      if (type === "AR") totalAR += value;
     }
   });
 
@@ -153,135 +144,144 @@ function getLastNDaysSummary(rows, days) {
 // Message Handler
 // =========================
 client.on("messageCreate", async (message) => {
-  if (!message.content.startsWith("!")) return;
+  try {
+    if (message.author.bot) return;
+    if (!message.content.startsWith("!")) return;
 
-  const parts = message.content.trim().split(/\s+/);
-  const command = parts[0];
-  const value = parts[1];
-  const dateInput = parts[2];
+    console.log("Received:", message.content);
 
-  const rows = await getAllRows();
+    const parts = message.content.trim().split(/\s+/);
+    const command = parts[0];
+    const value = parts[1];
+    const dateInput = parts[2];
 
-  // =========================
-  // ADD DATA
-  // =========================
-  if (command === "!water" || command === "!food" || command === "!ar") {
-    const targetDate = resolveDate(dateInput);
-    if (!targetDate) {
-      return message.reply("รูปแบบวันที่ไม่ถูกต้อง ใช้ YYYY-MM-DD");
+    const rows = await getAllRows();
+
+    // =========================
+    // ADD DATA
+    // =========================
+    if (command === "!water" || command === "!food" || command === "!ar") {
+      const targetDate = resolveDate(dateInput);
+      if (!targetDate) {
+        return message.reply("รูปแบบวันที่ไม่ถูกต้อง ใช้ YYYY-MM-DD");
+      }
+
+      const amount = Number(value);
+      if (!amount || amount < 10) {
+        return message.reply("ตัวเลขดูผิดปกติ ลองใหม่อีกที 🧐");
+      }
+
+      let calculatedWater = amount;
+      let type = "";
+
+      if (command === "!water") type = "WATER";
+
+      if (command === "!food") {
+        type = "FOOD";
+        calculatedWater = Math.round(amount * 0.78);
+      }
+
+      if (command === "!ar") type = "AR";
+
+      await appendRow(targetDate, type, amount, calculatedWater);
+
+      const rowsAfter = await getAllRows();
+      const { drink, ar } = calculateByDate(rowsAfter, targetDate);
+
+      const drinkMessage =
+        drink >= TARGET_DRINK
+          ? `+${drink - TARGET_DRINK} ml`
+          : `เหลืออีก ${TARGET_DRINK - drink} ml`;
+
+      const drinkStatus =
+        drink >= TARGET_DRINK
+          ? "✔ เกินเป้าเล็กน้อย"
+          : "❗ ยังไม่ถึงเป้า";
+
+      const arMessage =
+        ar > 0 ? `ให้แล้ว ${ar} ml` : "วันนี้ยังไม่ได้ให้";
+
+      return message.reply(
+        `📅 ${targetDate}\n\n` +
+        `💧 Drink (water+food)\n` +
+        `   ${drink} / ${TARGET_DRINK} ml\n` +
+        `   ${drinkMessage}\n\n` +
+        `💉 AR fluid\n` +
+        `   ${arMessage}\n\n` +
+        `-----------------------------------------\n` +
+        `📊 สถานะวันนี้\n` +
+        `   ${drinkStatus}`
+      );
     }
 
-    const amount = Number(value);
-    if (!amount || amount < 10) {
-      return message.reply("ตัวเลขดูผิดปกติ ลองใหม่อีกที 🧐");
+    // =========================
+    // TODAY
+    // =========================
+    if (command === "!today") {
+      const today = todayISO();
+      const { drink, ar } = calculateByDate(rows, today);
+
+      const drinkMessage =
+        drink >= TARGET_DRINK
+          ? `+${drink - TARGET_DRINK} ml`
+          : `เหลืออีก ${TARGET_DRINK - drink} ml`;
+
+      const drinkStatus =
+        drink >= TARGET_DRINK
+          ? "✔ เกินเป้าเล็กน้อย"
+          : "❗ ยังไม่ถึงเป้า";
+
+      const arMessage =
+        ar > 0 ? `ให้แล้ว ${ar} ml` : "วันนี้ยังไม่ได้ให้";
+
+      return message.reply(
+        `📅 วันนี้\n\n` +
+        `💧 Drink (water+food)\n` +
+        `   ${drink} / ${TARGET_DRINK} ml\n` +
+        `   ${drinkMessage}\n\n` +
+        `💉 AR fluid\n` +
+        `   ${arMessage}\n\n` +
+        `-----------------------------------------\n` +
+        `📊 สถานะวันนี้\n` +
+        `   ${drinkStatus}`
+      );
     }
 
-    let calculatedWater = amount;
-    let type = "";
+    // =========================
+    // WEEK
+    // =========================
+    if (command === "!week") {
+      const summary = getLastNDaysSummary(rows, 7);
 
-    if (command === "!water") type = "WATER";
-
-    if (command === "!food") {
-      type = "FOOD";
-      calculatedWater = Math.round(amount * 0.78);
+      return message.reply(
+        `📊 7 วันล่าสุด\n\n` +
+        `💧 Drink รวม: ${summary.totalDrink} ml\n` +
+        `   เฉลี่ย/วัน: ${summary.avgDrink} ml\n\n` +
+        `💉 AR fluid รวม: ${summary.totalAR} ml\n` +
+        `   เฉลี่ย/วันที่ให้: ${summary.avgAR} ml\n\n` +
+        `ครอบคลุม ${summary.daysCount} วัน`
+      );
     }
 
-    if (command === "!ar") type = "AR";
+    // =========================
+    // MONTH
+    // =========================
+    if (command === "!month") {
+      const summary = getLastNDaysSummary(rows, 30);
 
-    await appendRow(targetDate, type, amount, calculatedWater);
+      return message.reply(
+        `📆 30 วันล่าสุด\n\n` +
+        `💧 Drink รวม: ${summary.totalDrink} ml\n` +
+        `   เฉลี่ย/วัน: ${summary.avgDrink} ml\n\n` +
+        `💉 AR fluid รวม: ${summary.totalAR} ml\n` +
+        `   เฉลี่ย/วันที่ให้: ${summary.avgAR} ml\n\n` +
+        `ครอบคลุม ${summary.daysCount} วัน`
+      );
+    }
 
-    const rowsAfter = await getAllRows();
-    const { drink, ar } = calculateByDate(rowsAfter, targetDate);
-
-    let drinkMessage =
-      drink >= TARGET_DRINK
-        ? `+${drink - TARGET_DRINK} ml`
-        : `เหลืออีก ${TARGET_DRINK - drink} ml`;
-
-    let drinkStatus =
-      drink >= TARGET_DRINK
-        ? "✔ เกินเป้าเล็กน้อย"
-        : "❗ ยังไม่ถึงเป้า";
-
-    const arMessage =
-      ar > 0 ? `ให้แล้ว ${ar} ml` : "วันนี้ยังไม่ได้ให้";
-
-    return message.reply(
-      `📅 ${targetDate}\n\n` +
-      `💧 Drink (water+food)\n` +
-      `   ${drink} / ${TARGET_DRINK} ml\n` +
-      `   ${drinkMessage}\n\n` +
-      `💉 AR fluid\n` +
-      `   ${arMessage}\n\n` +
-      `-----------------------------------------\n` +
-      `📊 สถานะวันนี้\n` +
-      `   ${drinkStatus}`
-    );
-  }
-
-  // =========================
-  // TODAY
-  // =========================
-  if (command === "!today") {
-    const today = new Date().toLocaleDateString("th-TH");
-    const { drink, ar } = calculateByDate(rows, today);
-
-    const drinkMessage =
-      drink >= TARGET_DRINK
-        ? `+${drink - TARGET_DRINK} ml`
-        : `เหลืออีก ${TARGET_DRINK - drink} ml`;
-
-    const drinkStatus =
-      drink >= TARGET_DRINK
-        ? "✔ เกินเป้าเล็กน้อย"
-        : "❗ ยังไม่ถึงเป้า";
-
-    const arMessage =
-      ar > 0 ? `ให้แล้ว ${ar} ml` : "วันนี้ยังไม่ได้ให้";
-
-    return message.reply(
-      `📅 วันนี้\n\n` +
-      `💧 Drink (water+food)\n` +
-      `   ${drink} / ${TARGET_DRINK} ml\n` +
-      `   ${drinkMessage}\n\n` +
-      `💉 AR fluid\n` +
-      `   ${arMessage}\n\n` +
-      `-----------------------------------------\n` +
-      `📊 สถานะวันนี้\n` +
-      `   ${drinkStatus}`
-    );
-  }
-
-  // =========================
-  // WEEK
-  // =========================
-  if (command === "!week") {
-    const summary = getLastNDaysSummary(rows, 7);
-
-    return message.reply(
-      `📊 7 วันล่าสุด\n\n` +
-      `💧 Drink รวม: ${summary.totalDrink} ml\n` +
-      `   เฉลี่ย/วัน: ${summary.avgDrink} ml\n\n` +
-      `💉 AR fluid รวม: ${summary.totalAR} ml\n` +
-      `   เฉลี่ย/วันที่ให้: ${summary.avgAR} ml\n\n` +
-      `ครอบคลุม ${summary.daysCount} วัน`
-    );
-  }
-
-  // =========================
-  // MONTH
-  // =========================
-  if (command === "!month") {
-    const summary = getLastNDaysSummary(rows, 30);
-
-    return message.reply(
-      `📆 30 วันล่าสุด\n\n` +
-      `💧 Drink รวม: ${summary.totalDrink} ml\n` +
-      `   เฉลี่ย/วัน: ${summary.avgDrink} ml\n\n` +
-      `💉 AR fluid รวม: ${summary.totalAR} ml\n` +
-      `   เฉลี่ย/วันที่ให้: ${summary.avgAR} ml\n\n` +
-      `ครอบคลุม ${summary.daysCount} วัน`
-    );
+  } catch (err) {
+    console.error("Message error:", err);
+    message.reply("มี error เกิดขึ้น ลองใหม่อีกที 🛠");
   }
 });
 
