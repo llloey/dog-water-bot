@@ -53,14 +53,18 @@ client.on("messageCreate", async (message) => {
 (async () => {
   try {
     console.log("🚀 Starting Discord login...");
-    console.log("TOKEN EXISTS:", !!process.env.DISCORD_TOKEN);
 
-    await client.login(process.env.DISCORD_TOKEN);
+    const token = process.env.DISCORD_TOKEN;
 
-    console.log("🎯 Discord login success");
+    console.log("Token exists:", !!token);
+    console.log("Token length:", token?.length);
+
+    const result = await client.login(token);
+
+    console.log("Login returned:", result);
 
   } catch (err) {
-    console.error("❌ Discord login error:");
+    console.error("❌ FULL LOGIN ERROR:");
     console.error(err);
   }
 })();
